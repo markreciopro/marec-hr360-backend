@@ -1,81 +1,25 @@
-# =========================
-# 📦 IMPORTS
-# =========================
-from fastapi import APIRouter, HTTPException
-import logging
-from datetime import datetime
+from fastapi import APIRouter
 
-# =========================
-# 🛠️ ROUTER SETUP
-# =========================
-router = APIRouter(
-    prefix="/api",
-    tags=["Dashboard"]
-)
+router = APIRouter()
 
-# =========================
-# 🛠️ LOGGING CONFIG
-# =========================
-logger = logging.getLogger(__name__)
-
-
-# =========================
-# 📊 EXECUTIVE DASHBOARD
-# =========================
-@router.get("/dashboard")
-def get_dashboard():
-    """
-    Returns executive-level HR metrics
-    """
-
-    try:
-        data = {
-            "timestamp": datetime.utcnow(),
-            "metrics": {
-                "headcount": 120,
-                "hires": 25,
-                "terminations": 10,
-                "turnover_rate": 8.3
-            },
-            "departments": [
-                {"name": "HR", "headcount": 10},
-                {"name": "Engineering", "headcount": 50},
-                {"name": "Sales", "headcount": 30},
-                {"name": "Operations", "headcount": 30}
-            ],
-            "status": "success"
-        }
-
-        logger.info("✅ Dashboard data retrieved successfully")
-        return data
-
-    except Exception as e:
-        logger.error(f"❌ Dashboard error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Dashboard failed")
-
-
-# =========================
-# 👥 WORKFORCE ANALYTICS
-# =========================
-@router.get("/dashboard/workforce")
-def workforce_analytics():
+@router.get("/")
+async def get_stats():
+    """Feeds the Top Cards in your dashboard"""
     return {
-        "total_employees": 120,
-        "active": 110,
-        "on_leave": 10,
-        "avg_tenure_years": 3.5
+        "stats": [
+            {"label": "Total Headcount", "value": "124", "trend": "+12%", "isPositive": True},
+            {"label": "Active Recruits", "value": "45", "trend": "+5%", "isPositive": True},
+            {"label": "Retention Rate", "value": "94.2%", "trend": "-0.5%", "isPositive": False},
+            {"label": "Avg Time to Hire", "value": "18 Days", "trend": "-2 Days", "isPositive": True}
+        ]
     }
 
-
-# =========================
-# 📈 RECRUITING FUNNEL
-# =========================
-@router.get("/dashboard/recruiting")
-def recruiting_funnel():
-    return {
-        "applicants": 300,
-        "screened": 150,
-        "interviewed": 75,
-        "offers": 30,
-        "hires": 25
-    }
+@router.get("/budget")
+async def get_budget():
+    """Feeds the Departmental Budget Chart"""
+    return [
+        {"department": "Engineering", "budget": 150000, "spent": 132000},
+        {"department": "Marketing", "budget": 85000, "spent": 72000},
+        {"department": "Sales", "budget": 120000, "spent": 115000},
+        {"department": "Operations", "budget": 95000, "spent": 88000}
+    ]
