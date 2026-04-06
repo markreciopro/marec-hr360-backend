@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import logging
 import time
 
@@ -9,6 +10,7 @@ try:
     import models
     # Creates tables in PostgreSQL automatically
     models.Base.metadata.create_all(bind=engine)
+    print("✅ Database tables verified/created.")
 except Exception as e:
     print(f"⚠️ Database connection warning: {e}")
 
@@ -23,12 +25,13 @@ app = FastAPI(
 )
 
 # 🌐 SURGICAL CORS CONFIG
-# This allows your GitHub Pages site to securely talk to this Render API
+# Updated to ensure all variations of your origins are accepted
 origins = [
-    "https://markreciopro.github.io",  # Your Live Site
-    "http://127.0.0.1:8000",           # Local Testing
-    "http://localhost:8000",           # Local Testing
-    "http://localhost:5500",           # Live Server Extension
+    "https://markreciopro.github.io",
+    "https://markreciopro.github.io/", # Added trailing slash variation
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://localhost:5500",
 ]
 
 app.add_middleware(
@@ -39,44 +42,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🛡️ GLOBAL ERROR LOGGING MIDDLEWARE
+# 🛡️ GLOBAL ERROR LOGGING & 404 CATCHER
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    try:
-        response = await call_next(request)
-        process_time = (time.time() - start_time) * 1000
-        formatted_process_time = '{0:.2f}'.format(process_time)
-        logger.info(f"RID: {request.scope.get('root_path')} | Method: {request.method} | Path: {request.url.path} | Time: {formatted_process_time}ms")
-        return response
-    except Exception as e:
-        logger.error(f"❌ Server Error on {request.url.path}: {str(e)}")
-        raise e
+    response = await call_next(request)
+    
+    # If we get a 404, log exactly what path was requested to help debugging
+    if response.status_code == 404:
+        logger.warning(f"❓ 404 Not Found: {request.method} {request.url.path}")
+        
+    process_time = (time.time() - start_time) * 1000
+    logger.info(f"Method: {request.method} | Path: {request.url.path} | Status: {response.status_code} | {process_time:.2f}ms")
+    return response
 
-# ✅ HEALTH CHECK ROUTE (Required for the Diagnostic Tool)
-@app.get("/api/v1/health", tags=["System"])
-def health_check():
+# ✅ HEALTH CHECK ROUTE (Explicitly placed before routers)
+@app.get("/api/v1/health")
+async def health_check():
     return {
         "status": "online",
         "timestamp": time.time(),
-        "version": "1.0.0",
-        "service": "MAREC-HR360-API"
+        "service": "MAREC-HR360-API",
+        "message": "System operational"
     }
 
 # ✅ IMPORT & LINK ROUTERS
 try:
     from routes import dashboard, employees
+    # Ensure these routers exist in your 'routes' folder
     app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
     app.include_router(employees.router, prefix="/api/v1/employees", tags=["Employees"])
-    logger.info("🚀 All MAREC routes and Database connected successfully")
-except ImportError as e:
-    logger.error(f"❌ Import Error: {e}. Check your routes folder structure!")
+    logger.info("🚀 API Routers integrated")
+except Exception as e:
+    logger.error(f"❌ Router Integration Error: {e}")
 
 @app.get("/")
-def root():
+async def root():
     return {
-        "message": "MAREC HR360 API is Live", 
-        "owner": "MAREC Insights",
-        "environment": "Production",
-        "documentation": "/docs"
+        "message": "MAREC HR360 API", 
+        "status": "Active",
+        "docs": "/docs"
     }
