@@ -25,10 +25,12 @@ app = FastAPI(
 )
 
 # 🌐 SURGICAL CORS CONFIG
-# Updated to ensure all variations of your origins are accepted
+# Updated to ensure all variations of your GitHub Pages origins are accepted
 origins = [
     "https://markreciopro.github.io",
-    "https://markreciopro.github.io/", # Added trailing slash variation
+    "https://markreciopro.github.io/",
+    "https://markreciopro.github.io/marec_hr360",
+    "https://markreciopro.github.io/marec_hr360/",
     "http://127.0.0.1:8000",
     "http://localhost:8000",
     "http://localhost:5500",
