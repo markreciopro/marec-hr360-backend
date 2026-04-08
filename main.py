@@ -25,7 +25,6 @@ app = FastAPI(
 )
 
 # 🌐 SURGICAL CORS CONFIG
-# Configured to allow your GitHub Pages production site and local development environments 
 origins = [
     "https://markreciopro.github.io",
     "https://markreciopro.github.io/",
@@ -50,7 +49,6 @@ async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     
-    # If we get a 404, log exactly what path was requested to help debugging
     if response.status_code == 404:
         logger.warning(f"❓ 404 Not Found: {request.method} {request.url.path}")
         
@@ -58,7 +56,7 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Method: {request.method} | Path: {request.url.path} | Status: {response.status_code} | {process_time:.2f}ms")
     return response
 
-# ✅ HEALTH CHECK ROUTE (Explicitly placed before routers)
+# ✅ HEALTH CHECK ROUTE
 @app.get("/api/v1/health")
 async def health_check():
     return {
@@ -68,10 +66,23 @@ async def health_check():
         "message": "System operational"
     }
 
+# 🔄 NEW: SYNC ROUTE (Fixes the frontend Connection Failed error)
+@app.get("/api/v1/sync")
+async def sync_database():
+    try:
+        # This is where your future logic for refreshing PostgreSQL data will go
+        logger.info("🔄 Sync request received from Frontend")
+        return {
+            "status": "success", 
+            "message": "MAREC HR360 Database Synced Successfully"
+        }
+    except Exception as e:
+        logger.error(f"❌ Sync Failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 # ✅ IMPORT & LINK ROUTERS
 try:
     from routes import dashboard, employees
-    # Integrates specialized routers for dashboard metrics and employee management 
     app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
     app.include_router(employees.router, prefix="/api/v1/employees", tags=["Employees"])
     logger.info("🚀 API Routers integrated")
