@@ -25,7 +25,7 @@ app = FastAPI(
 )
 
 # 🌐 SURGICAL CORS CONFIG
-# Updated to ensure all variations of your GitHub Pages origins are accepted
+# Configured to allow your GitHub Pages production site and local development environments 
 origins = [
     "https://markreciopro.github.io",
     "https://markreciopro.github.io/",
@@ -71,7 +71,7 @@ async def health_check():
 # ✅ IMPORT & LINK ROUTERS
 try:
     from routes import dashboard, employees
-    # Ensure these routers exist in your 'routes' folder
+    # Integrates specialized routers for dashboard metrics and employee management 
     app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
     app.include_router(employees.router, prefix="/api/v1/employees", tags=["Employees"])
     logger.info("🚀 API Routers integrated")
