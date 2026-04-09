@@ -25,13 +25,13 @@ app = FastAPI(
 )
 
 # 🌐 SURGICAL CORS CONFIG
+# This allows your frontend (GitHub or Local) to communicate with this backend
 origins = [
     "https://markreciopro.github.io",
-    "https://markreciopro.github.io/",
     "https://markreciopro.github.io/marec_hr360",
-    "https://markreciopro.github.io/marec_hr360/",
     "http://127.0.0.1:8000",
     "http://localhost:8000",
+    "http://127.0.0.1:5500",
     "http://localhost:5500",
 ]
 
@@ -66,11 +66,11 @@ async def health_check():
         "message": "System operational"
     }
 
-# 🔄 NEW: SYNC ROUTE (Fixes the frontend Connection Failed error)
+# 🔄 SYNC ROUTE (Matches your frontend "Run Pipeline" or "Sync" actions)
 @app.get("/api/v1/sync")
 async def sync_database():
     try:
-        # This is where your future logic for refreshing PostgreSQL data will go
+        # Future logic for refreshing PostgreSQL data goes here
         logger.info("🔄 Sync request received from Frontend")
         return {
             "status": "success", 
