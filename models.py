@@ -1,20 +1,19 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
-from database import Base
-import datetime
+# models.py
+
+from sqlalchemy import Column, Integer, String, Date
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
 
 class Employee(Base):
     __tablename__ = "employees"
 
-    # Primary Identifiers
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(String, unique=True, index=True)
-    
-    # Workforce Details
-    full_name = Column(String)
+    employeeid = Column(String, index=True)
+    fullname = Column(String)
     department = Column(String)
-    role = Column(String)
-    
-    # Financials & Status
-    salary = Column(Float)
-    hire_date = Column(DateTime, default=datetime.datetime.utcnow)
-    status = Column(String, default="Active") # Active, Terminated, On Leave
+    jobtitle = Column(String)
+    status = Column(String)
+    hiredate = Column(String)  # keep string for flexibility
+    salary = Column(Integer)

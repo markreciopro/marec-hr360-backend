@@ -1,127 +1,131 @@
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import logging
-import time
 import pandas as pd
-import io
 
-# DATABASE IMPORTS
-try:
-    from database import engine
-    import models
-    # Creates tables in PostgreSQL automatically
-    models.Base.metadata.create_all(bind=engine)
-    print("✅ Database tables verified/created.")
-except Exception as e:
-    print(f"⚠️ Database connection warning: {e}")
+from sqlalchemy import create_engine
 
-# SETUP LOGGING
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+app = FastAPI()
 
-app = FastAPI(
-    title="MAREC HR360 API",
-    description="Workforce Intelligence Platform Backend",
-    version="1.0.0"
-)
+# ===============================
+# DATABASE CONNECTION
+# ===============================
+DATABASE_URL = "postgresql://postgres:password@localhost:5432/marec_db"
+engine = create_engine(DATABASE_URL)
 
-# 🌐 SURGICAL CORS CONFIG
-origins = [
-    "https://markreciopro.github.io",
-    "https://markreciopro.github.io/marec_hr360",
-    "http://127.0.0.1:8000",
-    "http://localhost:8000",
-    "http://127.0.0.1:5500",
-    "http://localhost:5500",
-    "http://127.0.0.1:5173", # Vite/React default
-    "https://cdpn.io",       # Essential for CodePen testing
-]
-
+# ===============================
+# CORS (Frontend Connection)
+# ===============================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # 🔒 Restrict later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 🛡️ GLOBAL REQUEST LOGGING
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = (time.time() - start_time) * 1000
-    logger.info(f"Method: {request.method} | Path: {request.url.path} | Status: {response.status_code} | {process_time:.2f}ms")
-    return response
+# ===============================
+# ROOT
+# ===============================
+@app.get("/")
+def root():
+    return {"message": "MAREC HR360 API running"}
 
-# --- NEW: THE "RECEIVER" ROUTE (File Upload & Process) ---
-@app.post("/api/v1/upload-data")
-async def process_workforce_file(file: UploadFile = File(...)):
+# ===============================
+# RUN PIPELINE (UPLOAD + CLEAN + STORE)
+# ===============================
+@app.post("/api/v1/run-pipeline")
+async def run_pipeline(file: UploadFile = File(...)):
+
     try:
-        logger.info(f"📥 Received file: {file.filename}")
-        contents = await file.read()
-        
-        # Determine file type and read into Pandas
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(contents))
-        elif file.filename.endswith(('.xls', '.xlsx')):
-            df = pd.read_excel(io.BytesIO(contents))
+        # ======================
+        # LOAD FILE
+        # ======================
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(file.file)
+        elif file.filename.endswith((".xlsx", ".xls")):
+            df = pd.read_excel(file.file)
         else:
-            return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type."})
+            raise HTTPException(status_code=400, detail="Unsupported file format")
 
-        # --- STRATEGIC DATA ARCHITECT MAGIC: CLEANING ---
-        df.dropna(how='all', inplace=True) # Remove totally empty rows
-        # Add your custom cleaning logic here (e.g., df['Salary'] = df['Salary'].replace('[\$,]', '', regex=True))
+        # ======================
+        # CLEAN DATA
+        # ======================
+        df.columns = df.columns.str.lower().str.strip().str.replace(" ", "_")
 
-        # --- LOCAL DATABASE SYNC ---
-        # If your models are ready, you can uncomment the next line to save to Postgres:
-        # df.to_sql('employees', con=engine, if_exists='append', index=False)
+        if "department" not in df.columns:
+            df["department"] = "Unknown"
+        else:
+            df["department"] = df["department"].fillna("Unknown")
+
+        if "status" not in df.columns:
+            df["status"] = "Active"
+        else:
+            df["status"] = df["status"].astype(str).str.strip().str.title()
+
+        # Remove empty rows
+        df = df.dropna(how="all")
+
+        if df.empty:
+            raise HTTPException(status_code=400, detail="File contains no usable data")
+
+        # ======================
+        # SAVE TO POSTGRESQL
+        # ======================
+        df.to_sql("employees", engine, if_exists="replace", index=False)
 
         return {
             "status": "success",
-            "message": f"Successfully processed {len(df)} rows from {file.filename}",
-            "preview": df.head(3).to_dict(orient='records')
+            "rows": len(df),
+            "columns": list(df.columns)
         }
+
     except Exception as e:
-        logger.error(f"❌ Upload Processing Failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
 
-# ✅ HEALTH CHECK ROUTE
-@app.get("/api/v1/health")
-async def health_check():
-    return {
-        "status": "online",
-        "service": "MAREC-HR360-API",
-        "message": "System operational"
-    }
+# ===============================
+# FETCH DATA (DB → DASHBOARD)
+# ===============================
+@app.get("/api/v1/employees")
+def get_employees():
 
-# 🔄 SYNC ROUTE
-@app.get("/api/v1/sync")
-async def sync_database():
     try:
-        logger.info("🔄 Sync request received from Frontend")
-        return {
-            "status": "success", 
-            "message": "MAREC HR360 Database Synced Successfully"
-        }
+        df = pd.read_sql("SELECT * FROM employees", engine)
+
+        if df.empty:
+            return []
+
+        return df.to_dict(orient="records")
+
     except Exception as e:
-        logger.error(f"❌ Sync Failed: {e}")
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+        raise HTTPException(status_code=500, detail=str(e))
 
-# ✅ IMPORT & LINK ROUTERS
-try:
-    from routes import dashboard, employees
-    app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
-    app.include_router(employees.router, prefix="/api/v1/employees", tags=["Employees"])
-    logger.info("🚀 API Routers integrated")
-except Exception as e:
-    logger.error(f"❌ Router Integration Error: {e}")
+# ===============================
+# SUMMARY (OPTIONAL KPI ENDPOINT)
+# ===============================
+@app.get("/api/v1/summary")
+def get_summary():
 
-@app.get("/")
-async def root():
-    return {
-        "message": "MAREC HR360 API", 
-        "status": "Active",
-        "docs": "/docs"
-    }
+    try:
+        df = pd.read_sql("SELECT * FROM employees", engine)
+
+        if df.empty:
+            return {"headcount": 0, "attrition": 0, "departments": {}}
+
+        headcount = len(df)
+
+        terminated = df[
+            df["status"].str.lower() == "terminated"
+        ].shape[0]
+
+        attrition = round((terminated / headcount) * 100, 2) if headcount else 0
+
+        dept_counts = df["department"].value_counts().to_dict()
+
+        return {
+            "headcount": headcount,
+            "attrition": attrition,
+            "departments": dept_counts
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

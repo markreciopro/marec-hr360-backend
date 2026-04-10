@@ -1,23 +1,20 @@
-import os
+# database.py
+
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 
-# Load local .env file if it exists
-load_dotenv()
+# 🔥 UPDATE THIS
+DATABASE_URL = "postgresql://postgres:password@localhost:5432/marec_db"
 
-# Get URL from Render's environment or your local .env
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+# Engine
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True
+)
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Dependency to use in FastAPI routes
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Session (optional for future ORM use)
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
