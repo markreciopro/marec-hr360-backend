@@ -1,8 +1,10 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
 import time
+import pandas as pd
+import io
 
 # DATABASE IMPORTS
 try:
@@ -25,7 +27,6 @@ app = FastAPI(
 )
 
 # 🌐 SURGICAL CORS CONFIG
-# This allows your frontend (GitHub or Local) to communicate with this backend
 origins = [
     "https://markreciopro.github.io",
     "https://markreciopro.github.io/marec_hr360",
@@ -33,6 +34,8 @@ origins = [
     "http://localhost:8000",
     "http://127.0.0.1:5500",
     "http://localhost:5500",
+    "http://127.0.0.1:5173", # Vite/React default
+    "https://cdpn.io",       # Essential for CodePen testing
 ]
 
 app.add_middleware(
@@ -43,34 +46,60 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🛡️ GLOBAL ERROR LOGGING & 404 CATCHER
+# 🛡️ GLOBAL REQUEST LOGGING
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
-    
-    if response.status_code == 404:
-        logger.warning(f"❓ 404 Not Found: {request.method} {request.url.path}")
-        
     process_time = (time.time() - start_time) * 1000
     logger.info(f"Method: {request.method} | Path: {request.url.path} | Status: {response.status_code} | {process_time:.2f}ms")
     return response
+
+# --- NEW: THE "RECEIVER" ROUTE (File Upload & Process) ---
+@app.post("/api/v1/upload-data")
+async def process_workforce_file(file: UploadFile = File(...)):
+    try:
+        logger.info(f"📥 Received file: {file.filename}")
+        contents = await file.read()
+        
+        # Determine file type and read into Pandas
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(io.BytesIO(contents))
+        elif file.filename.endswith(('.xls', '.xlsx')):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            return JSONResponse(status_code=400, content={"status": "error", "message": "Invalid file type."})
+
+        # --- STRATEGIC DATA ARCHITECT MAGIC: CLEANING ---
+        df.dropna(how='all', inplace=True) # Remove totally empty rows
+        # Add your custom cleaning logic here (e.g., df['Salary'] = df['Salary'].replace('[\$,]', '', regex=True))
+
+        # --- LOCAL DATABASE SYNC ---
+        # If your models are ready, you can uncomment the next line to save to Postgres:
+        # df.to_sql('employees', con=engine, if_exists='append', index=False)
+
+        return {
+            "status": "success",
+            "message": f"Successfully processed {len(df)} rows from {file.filename}",
+            "preview": df.head(3).to_dict(orient='records')
+        }
+    except Exception as e:
+        logger.error(f"❌ Upload Processing Failed: {e}")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 # ✅ HEALTH CHECK ROUTE
 @app.get("/api/v1/health")
 async def health_check():
     return {
         "status": "online",
-        "timestamp": time.time(),
         "service": "MAREC-HR360-API",
         "message": "System operational"
     }
 
-# 🔄 SYNC ROUTE (Matches your frontend "Run Pipeline" or "Sync" actions)
+# 🔄 SYNC ROUTE
 @app.get("/api/v1/sync")
 async def sync_database():
     try:
-        # Future logic for refreshing PostgreSQL data goes here
         logger.info("🔄 Sync request received from Frontend")
         return {
             "status": "success", 
