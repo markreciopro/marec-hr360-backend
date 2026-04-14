@@ -1,42 +1,37 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from dotenv import load_dotenv
 import os
+import pandas as pd
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 # =========================
-# FORCE LOAD ENV
+# ENV CONFIG
 # =========================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(BASE_DIR, ".env")
+ENV = os.getenv("ENV", "local")
 
-load_dotenv(env_path)
-
-ENV = os.getenv("ENV", "local").lower()
 LOCAL_DB = os.getenv("LOCAL_DB_URL")
 CLOUD_DB = os.getenv("CLOUD_DB_URL")
 
 # =========================
-# VALIDATION (PREVENT CRASHES)
+# SELECT DATABASE
 # =========================
-if ENV == "cloud":
-    if not CLOUD_DB:
-        raise ValueError("❌ CLOUD_DB_URL is not set in .env")
-    DATABASE_URL = CLOUD_DB
+if ENV == "cloud" and CLOUD_DB:
+    DB_URL = CLOUD_DB
+    CONNECT_ARGS = {"sslmode": "require"}
+    print("🌐 Using CLOUD database")
 else:
-    if not LOCAL_DB:
-        raise ValueError("❌ LOCAL_DB_URL is not set in .env")
-    DATABASE_URL = LOCAL_DB
+    DB_URL = LOCAL_DB
+    CONNECT_ARGS = {}
+    print("💻 Using LOCAL database")
 
 # =========================
-# ENGINE (AUTO SSL)
+# ENGINE
 # =========================
-if "localhost" in DATABASE_URL:
-    engine = create_engine(DATABASE_URL)
-else:
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={"sslmode": "require"}
-    )
+engine = create_engine(
+    DB_URL,
+    connect_args=CONNECT_ARGS,
+    pool_pre_ping=True
+)
 
 # =========================
 # SESSION
@@ -47,10 +42,47 @@ SessionLocal = sessionmaker(
     bind=engine
 )
 
+# =========================
+# BASE
+# =========================
 Base = declarative_base()
 
+
 # =========================
-# DEBUG (CONFIRM WORKING)
+# SAVE DATA (SMART)
 # =========================
-print(f"✅ ENV MODE: {ENV}")
-print(f"✅ DATABASE_URL LOADED: {DATABASE_URL}")
+def save_data(df: pd.DataFrame, table_name="employees"):
+    try:
+        df.to_sql(table_name, engine, if_exists="replace", index=False)
+        print(f"✅ Saved {len(df)} rows to {table_name}")
+    except Exception as e:
+        print("❌ Save error:", e)
+
+
+# =========================
+# LOAD DATA (SAFE)
+# =========================
+def load_data(table_name="employees"):
+    try:
+        return pd.read_sql(f"SELECT * FROM {table_name}", engine)
+    except Exception as e:
+        print("⚠️ Load error:", e)
+        return pd.DataFrame()
+
+
+# =========================
+# OPTIONAL: CLOUD SYNC
+# =========================
+def sync_to_cloud(df: pd.DataFrame):
+    if not CLOUD_DB:
+        return
+
+    try:
+        cloud_engine = create_engine(
+            CLOUD_DB,
+            connect_args={"sslmode": "require"}
+        )
+        df.to_sql("employees", cloud_engine, if_exists="replace", index=False)
+        print("☁️ Synced to cloud DB")
+    except Exception as e:
+        print("⚠️ Cloud sync failed:", e)
